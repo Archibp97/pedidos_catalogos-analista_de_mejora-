@@ -1,1 +1,1158 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Control de Pedidos y Catálogos</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@500&display=swap" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<style>
+  :root{
+    --bg:#F6F3EC;
+    --surface:#FFFFFF;
+    --ink:#2A2723;
+    --ink-soft:#7A7266;
+    --line:#DFD7C4;
+    --brand:#3E5C55;
+    --brand-soft:#E6EDE9;
+    --amber:#AE7530;
+    --amber-soft:#F6E9D6;
+    --green:#4A7857;
+    --green-soft:#E4EEE6;
+    --red:#A2453B;
+    --red-soft:#F5E2DE;
+  }
+  *{box-sizing:border-box;}
+  body{
+    margin:0;
+    background:var(--bg);
+    color:var(--ink);
+    font-family:'IBM Plex Sans', sans-serif;
+    line-height:1.5;
+  }
+  h1,h2,h3{
+    font-family:'Fraunces', serif;
+    font-weight:600;
+    margin:0 0 4px 0;
+  }
+  .mono{ font-family:'IBM Plex Mono', monospace; letter-spacing:0.2px; }
+  .wrap{
+    max-width:900px;
+    margin:0 auto;
+    padding:36px 24px 80px;
+  }
+  header.top{
+    border-bottom:2px solid var(--ink);
+    padding-bottom:18px;
+    margin-bottom:28px;
+  }
+  header.top .eyebrow{
+    color:var(--ink-soft);
+    font-size:13.5px;
+  }
+  nav.tabs{
+    display:flex;
+    gap:4px;
+    margin-bottom:28px;
+    border-bottom:1px solid var(--line);
+  }
+  nav.tabs button{
+    font-family:'IBM Plex Sans', sans-serif;
+    font-size:14.5px;
+    font-weight:500;
+    background:transparent;
+    border:none;
+    padding:12px 18px;
+    cursor:pointer;
+    color:var(--ink-soft);
+    border-bottom:3px solid transparent;
+    margin-bottom:-1px;
+    transition:color .15s ease;
+  }
+  nav.tabs button:hover{ color:var(--ink); }
+  nav.tabs button.active{
+    color:var(--brand);
+    border-bottom-color:var(--brand);
+    font-weight:600;
+  }
+  .panel{ display:none; }
+  .panel.active{ display:block; }
 
+  .card{
+    background:var(--surface);
+    border:1px solid var(--line);
+    border-radius:3px;
+    padding:26px;
+    margin-bottom:20px;
+  }
+  .field{ margin-bottom:18px; }
+  .field label{
+    display:block;
+    font-size:13px;
+    color:var(--ink-soft);
+    margin-bottom:6px;
+  }
+  .field input[type=text], .field input[type=number], .field input[type=date], .field select{
+    width:100%;
+    padding:9px 11px;
+    border:1px solid var(--line);
+    border-radius:3px;
+    font-size:14.5px;
+    font-family:'IBM Plex Sans', sans-serif;
+    background:#FDFCF9;
+    color:var(--ink);
+  }
+  .field input:focus, .field select:focus{
+    outline:2px solid var(--brand);
+    outline-offset:1px;
+  }
+  .row2{ display:grid; grid-template-columns:1fr 1fr; gap:16px; }
+  .row3{ display:grid; grid-template-columns:2fr 1fr 1fr; gap:16px; align-items:end; }
+
+  .toggle-row{
+    display:flex; align-items:center; gap:10px;
+    padding:12px 0;
+    border-top:1px solid var(--line);
+    border-bottom:1px solid var(--line);
+    margin-bottom:18px;
+  }
+  .toggle-row input{ width:17px; height:17px; }
+  .toggle-row label{ font-size:14.5px; font-weight:500; cursor:pointer; }
+
+  .catalog-list{
+    display:flex; flex-direction:column; gap:2px;
+    border:1px solid var(--line);
+    border-radius:3px;
+    overflow:hidden;
+  }
+  .catalog-item{
+    display:grid;
+    grid-template-columns:24px 1fr 110px;
+    align-items:center;
+    gap:12px;
+    padding:9px 12px;
+    background:#FDFCF9;
+    border-bottom:1px solid var(--line);
+  }
+  .catalog-item:last-child{ border-bottom:none; }
+  .catalog-item input[type=checkbox]{ width:16px; height:16px; }
+  .catalog-item span{ font-size:14px; }
+  .catalog-item input[type=number]{
+    padding:6px 8px; font-size:13.5px;
+    border:1px solid var(--line); border-radius:3px;
+  }
+  .catalog-item.disabled span{ color:var(--ink-soft); }
+  .catalog-item.disabled input[type=number]{ background:#F1EEE7; color:var(--ink-soft); }
+
+  .uniform-qty{
+    background:var(--brand-soft);
+    border:1px solid var(--brand);
+    border-radius:3px;
+    padding:14px 16px;
+    margin-bottom:18px;
+  }
+  .uniform-qty label{ color:var(--brand); font-weight:500; }
+
+  button.primary{
+    background:var(--brand);
+    color:#fff;
+    border:none;
+    padding:11px 22px;
+    font-size:14.5px;
+    font-weight:500;
+    border-radius:3px;
+    cursor:pointer;
+    font-family:'IBM Plex Sans', sans-serif;
+  }
+  button.primary:hover{ background:#324b45; }
+  button.secondary{
+    background:transparent;
+    color:var(--brand);
+    border:1px solid var(--brand);
+    padding:10px 20px;
+    font-size:14px;
+    border-radius:3px;
+    cursor:pointer;
+  }
+  .msg{
+    padding:10px 14px;
+    border-radius:3px;
+    font-size:13.5px;
+    margin-bottom:16px;
+    display:none;
+  }
+  .msg.ok{ background:var(--green-soft); color:var(--green); display:block; }
+  .msg.err{ background:var(--red-soft); color:var(--red); display:block; }
+
+  .filters{
+    display:grid;
+    grid-template-columns:1fr 1fr 1fr auto;
+    gap:14px;
+    align-items:end;
+    margin-bottom:22px;
+  }
+  .summary{
+    display:grid;
+    grid-template-columns:repeat(4,1fr);
+    gap:12px;
+    margin-bottom:22px;
+  }
+  .summary .stat{
+    border:1px solid var(--line);
+    border-radius:3px;
+    padding:14px 16px;
+    background:var(--surface);
+  }
+  .summary .stat .num{ font-family:'Fraunces',serif; font-size:26px; font-weight:600; }
+  .summary .stat .lbl{ font-size:12.5px; color:var(--ink-soft); }
+
+  .order-row{
+    border:1px solid var(--line);
+    border-radius:3px;
+    padding:16px 18px;
+    margin-bottom:12px;
+    background:var(--surface);
+  }
+  .order-head{
+    display:flex; justify-content:space-between; align-items:center;
+    margin-bottom:8px;
+  }
+  .order-head .pedido-num{ font-size:16px; font-weight:600; }
+  .order-head .fecha{ color:var(--ink-soft); font-size:13px; }
+  .badge{
+    display:inline-block;
+    padding:3px 10px;
+    border-radius:20px;
+    font-size:12px;
+    font-weight:600;
+  }
+  .badge.completo{ background:var(--green-soft); color:var(--green); }
+  .badge.parcial{ background:var(--amber-soft); color:var(--amber); }
+  .badge.pendiente{ background:var(--red-soft); color:var(--red); }
+  .order-detail{ font-size:13.5px; color:var(--ink-soft); margin-top:6px; }
+  .order-detail b{ color:var(--ink); font-weight:500; }
+  .pasta-line{
+    margin-top:8px; padding-top:8px; border-top:1px dashed var(--line);
+    font-size:13px; color:var(--ink-soft);
+  }
+  .empty-state{
+    text-align:center; padding:50px 20px; color:var(--ink-soft);
+  }
+
+  .despacho-select{ margin-bottom:20px; }
+  .despacho-order-info{
+    background:var(--brand-soft);
+    border-radius:3px;
+    padding:12px 16px;
+    margin-bottom:18px;
+    font-size:14px;
+  }
+  .despacho-check-row{
+    display:grid;
+    grid-template-columns:24px 1fr 70px 100px;
+    align-items:center;
+    gap:12px;
+    padding:10px 12px;
+    border-bottom:1px solid var(--line);
+    font-size:14px;
+  }
+  .despacho-check-row:last-child{ border-bottom:none; }
+  .despacho-check-row input[type=checkbox]{ width:17px; height:17px; }
+  .despacho-check-row .qty{ color:var(--ink-soft); font-size:13px; }
+  .status-tag{ font-size:12px; font-weight:600; }
+  .status-tag.si{ color:var(--green); }
+  .status-tag.no{ color:var(--red); }
+
+  .inv-table-wrap{ overflow-x:auto; }
+  table.inv-table{
+    width:100%;
+    border-collapse:collapse;
+    font-size:13.5px;
+  }
+  table.inv-table th{
+    text-align:left;
+    font-size:11.5px;
+    text-transform:uppercase;
+    letter-spacing:0.4px;
+    color:var(--ink-soft);
+    padding:8px 10px;
+    border-bottom:1px solid var(--ink);
+  }
+  table.inv-table td{
+    padding:7px 10px;
+    border-bottom:1px solid var(--line);
+    vertical-align:middle;
+  }
+  table.inv-table input[type=number]{
+    width:80px;
+    padding:6px 8px;
+    border:1px solid var(--line);
+    border-radius:3px;
+    font-size:13.5px;
+  }
+  table.inv-table td.num{ font-family:'IBM Plex Mono', monospace; }
+  table.inv-table td.meta{ font-weight:600; }
+  .tag-exceso{ font-size:11.5px; color:var(--ink-soft); background:var(--brand-soft); padding:2px 8px; border-radius:20px; }
+
+  #auth-overlay{
+    position:fixed; inset:0;
+    background:var(--bg);
+    display:flex; align-items:center; justify-content:center;
+    z-index:100;
+  }
+  .auth-card{
+    background:var(--surface);
+    border:1px solid var(--line);
+    border-radius:3px;
+    padding:36px 34px;
+    width:100%;
+    max-width:360px;
+  }
+  .auth-card h1{ font-size:22px; margin-bottom:4px; }
+  .auth-card .eyebrow{ color:var(--ink-soft); font-size:13px; margin-bottom:22px; }
+  .auth-card button{ width:100%; margin-top:6px; }
+  .header-flex{
+    display:flex; justify-content:space-between; align-items:flex-end;
+  }
+  #btn-logout{
+    background:transparent; border:1px solid var(--line); color:var(--ink-soft);
+    padding:7px 14px; border-radius:3px; font-size:13px; cursor:pointer;
+    font-family:'IBM Plex Sans', sans-serif;
+  }
+  #btn-logout:hover{ border-color:var(--ink-soft); color:var(--ink); }
+</style>
+</head>
+<body>
+
+<div id="auth-overlay">
+  <div class="auth-card">
+    <h1>Control de pedidos y catálogos</h1>
+    <div class="eyebrow">Ingresa con la cuenta del equipo</div>
+    <div id="msg-login" class="msg"></div>
+    <div class="field">
+      <label for="login-password">Contraseña</label>
+      <input type="password" id="login-password" placeholder="••••••••">
+    </div>
+    <button class="primary" id="btn-login">Ingresar</button>
+  </div>
+</div>
+
+<div class="wrap" id="app-root" style="display:none;">
+
+  <header class="top">
+    <div class="header-flex">
+      <div>
+        <div class="eyebrow">Planificación de producción</div>
+        <h1>Control de pedidos y catálogos</h1>
+      </div>
+      <button id="btn-logout">Cerrar sesión</button>
+    </div>
+  </header>
+
+  <nav class="tabs">
+    <button class="tab-btn active" data-tab="registrar">Registrar pedido</button>
+    <button class="tab-btn" data-tab="consultar">Ver pedidos</button>
+    <button class="tab-btn" data-tab="despachar">Registrar despacho</button>
+    <button class="tab-btn" data-tab="inventario">Inventario y producción</button>
+  </nav>
+
+  <!-- TAB 1: REGISTRAR -->
+  <section class="panel active" id="panel-registrar">
+    <div class="card">
+      <div id="msg-registrar" class="msg"></div>
+      <div class="row2">
+        <div class="field">
+          <label for="in-pedido">Número de pedido</label>
+          <input type="text" id="in-pedido" placeholder="Ej. 598494">
+        </div>
+        <div class="field">
+          <label for="in-fecha">Fecha de registro</label>
+          <input type="date" id="in-fecha">
+        </div>
+      </div>
+
+      <div class="toggle-row">
+        <input type="checkbox" id="in-maleta">
+        <label for="in-maleta">Este pedido es maleta (set completo de los 16 catálogos)</label>
+      </div>
+
+      <div id="maleta-qty-block" class="uniform-qty" style="display:none;">
+        <label for="in-maleta-cantidad">Cantidad (aplica igual a los 16 catálogos)</label>
+        <input type="number" id="in-maleta-cantidad" min="1" placeholder="Ej. 2">
+      </div>
+
+      <div id="catalogo-list-block" class="field">
+        <label>Catálogos incluidos en el pedido</label>
+        <div class="catalog-list" id="catalog-list"></div>
+      </div>
+
+      <div class="toggle-row" style="margin-top:20px;">
+        <input type="checkbox" id="in-pastadura">
+        <label for="in-pastadura">Incluye pasta dura (aparte de los catálogos)</label>
+      </div>
+      <div id="pastadura-qty-block" class="field" style="display:none;">
+        <label for="in-pastadura-cantidad">Cantidad de pasta dura</label>
+        <input type="number" id="in-pastadura-cantidad" min="1" placeholder="Ej. 1">
+      </div>
+
+      <button class="primary" id="btn-guardar-pedido">Registrar pedido</button>
+    </div>
+  </section>
+
+  <!-- TAB 2: CONSULTAR -->
+  <section class="panel" id="panel-consultar">
+    <div class="summary" id="summary-stats"></div>
+    <div class="card">
+      <div class="filters">
+        <div class="field" style="margin-bottom:0;">
+          <label for="f-desde">Fecha desde</label>
+          <input type="date" id="f-desde">
+        </div>
+        <div class="field" style="margin-bottom:0;">
+          <label for="f-hasta">Fecha hasta</label>
+          <input type="date" id="f-hasta">
+        </div>
+        <div class="field" style="margin-bottom:0;">
+          <label for="f-estado">Mostrar</label>
+          <select id="f-estado">
+            <option value="todos">Todos los pedidos</option>
+            <option value="pendientes">Solo pendientes (parcial + pendiente)</option>
+            <option value="completo">Solo completos</option>
+          </select>
+        </div>
+        <button class="secondary" id="btn-limpiar-filtros">Limpiar filtros</button>
+      </div>
+    </div>
+    <div id="orders-list"></div>
+  </section>
+
+  <!-- TAB 3: DESPACHAR -->
+  <section class="panel" id="panel-despachar">
+    <div class="card">
+      <div id="msg-despacho" class="msg"></div>
+      <div class="field despacho-select">
+        <label for="sel-pedido">Buscar pedido</label>
+        <select id="sel-pedido"><option value="">Selecciona un pedido...</option></select>
+      </div>
+      <div id="despacho-body"></div>
+    </div>
+  </section>
+
+  <!-- TAB 4: INVENTARIO Y PRODUCCIÓN -->
+  <section class="panel" id="panel-inventario">
+    <div class="card">
+      <div id="msg-inventario" class="msg"></div>
+      <div class="field" style="max-width:260px;">
+        <label for="in-stock-objetivo">Stock objetivo (colchón mínimo por catálogo)</label>
+        <input type="number" id="in-stock-objetivo" min="0" value="15">
+      </div>
+      <div class="inv-table-wrap">
+        <table class="inv-table">
+          <thead>
+            <tr>
+              <th>Catálogo</th>
+              <th>Inventario terminado</th>
+              <th>Inventario en proceso</th>
+            </tr>
+          </thead>
+          <tbody id="inv-input-body"></tbody>
+        </table>
+      </div>
+      <button class="primary" id="btn-guardar-inventario" style="margin-top:18px;">Guardar inventario</button>
+      <div class="order-detail" style="margin-top:10px;">Esto es tu conteo inicial. Después de guardarlo, los despachos y la producción registrada lo mantienen actualizado solo.</div>
+    </div>
+
+    <div class="card">
+      <div id="msg-en-proceso" class="msg"></div>
+      <h3 style="margin:0 0 6px;">Registrar producción en proceso</h3>
+      <div class="order-detail" style="margin-bottom:14px;">Usa esto cuando empiezas a fabricar algo pero queda incompleto (por ejemplo, falta tela). Esas unidades suman al inventario en proceso, no al terminado.</div>
+      <div class="row3">
+        <div class="field" style="margin-bottom:0;">
+          <label for="proc-catalogo">Catálogo</label>
+          <select id="proc-catalogo"></select>
+        </div>
+        <div class="field" style="margin-bottom:0;">
+          <label for="proc-cantidad">Cantidad que quedó incompleta</label>
+          <input type="number" id="proc-cantidad" min="1">
+        </div>
+        <div class="field" style="margin-bottom:0;">
+          <label for="proc-nota">Motivo (opcional)</label>
+          <input type="text" id="proc-nota" placeholder="Ej. falta tela azul">
+        </div>
+      </div>
+      <button class="primary" id="btn-registrar-en-proceso" style="margin-top:16px;">Registrar en proceso</button>
+    </div>
+
+    <div class="card">
+      <div id="msg-produccion" class="msg"></div>
+      <h3 style="margin:0 0 14px;">Registrar producción terminada</h3>
+      <div class="row3">
+        <div class="field" style="margin-bottom:0;">
+          <label for="prod-catalogo">Catálogo</label>
+          <select id="prod-catalogo"></select>
+        </div>
+        <div class="field" style="margin-bottom:0;">
+          <label for="prod-cantidad">Cantidad producida</label>
+          <input type="number" id="prod-cantidad" min="1">
+        </div>
+        <div class="field" style="margin-bottom:0; display:flex; align-items:center; gap:8px;">
+          <input type="checkbox" id="prod-de-proceso" checked style="width:16px;height:16px;">
+          <label for="prod-de-proceso" style="margin:0;">Venía de "en proceso"</label>
+        </div>
+      </div>
+      <button class="primary" id="btn-registrar-produccion" style="margin-top:16px;">Registrar producción</button>
+    </div>
+
+    <h3 style="margin:28px 0 4px;">Meta de producción de la semana</h3>
+    <div class="order-detail" style="margin-bottom:14px;">Pendiente en pedidos + stock objetivo − terminado − en proceso. Ordenado de mayor a menor prioridad.</div>
+    <div class="card">
+      <div class="inv-table-wrap">
+        <table class="inv-table" id="inv-result-table">
+          <thead>
+            <tr>
+              <th>Catálogo</th>
+              <th>Pendiente en pedidos</th>
+              <th>Terminado</th>
+              <th>En proceso</th>
+              <th>Objetivo</th>
+              <th>Meta a producir</th>
+              <th>Nota</th>
+            </tr>
+          </thead>
+          <tbody id="inv-result-body"></tbody>
+        </table>
+      </div>
+    </div>
+  </section>
+
+</div>
+
+<script>
+const CATALOGOS_16 = [
+  "BK Screen Jacquard","Screen Soltis","Sheer","Sheer II","Tradicional",
+  "Películas","Exteriores","Eleganza","Macro Aluminio","Madera",
+  "Miniperciana","Screen Collection","Harmony","Urbanik","Vertical","Hospitalaria"
+];
+
+/* ---------------- SUPABASE ---------------- */
+const SUPABASE_URL = 'https://mtphopmusezqqqvuhgpg.supabase.co';
+const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im10cGhvcG11c2V6cXFxdnVoZ3BnIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODkxNDYyMjAsImV4cCI6MjEwNDcyMjIyMH0.0EHTYaacCmuHDJ-E6UQXgFqsuD0tj9Hlr4VHkAEEs44';
+const sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+function showLogin(){
+  document.getElementById('auth-overlay').style.display = 'flex';
+  document.getElementById('app-root').style.display = 'none';
+}
+
+async function showApp(){
+  document.getElementById('auth-overlay').style.display = 'none';
+  document.getElementById('app-root').style.display = 'block';
+  await loadOrders();
+  await loadInventory();
+}
+
+const TEAM_EMAIL = 'equipo_catalogos@persianaspanorama.com';
+
+document.getElementById('btn-login').addEventListener('click', async ()=>{
+  const password = document.getElementById('login-password').value;
+  if(!password){ showMsg('msg-login','Ingresa la contraseña.','err'); return; }
+  const { error } = await sb.auth.signInWithPassword({ email: TEAM_EMAIL, password });
+  if(error){
+    showMsg('msg-login', 'Contraseña incorrecta.', 'err');
+  } else {
+    document.getElementById('login-password').value = '';
+    showApp();
+  }
+});
+
+document.getElementById('login-password').addEventListener('keydown', (e)=>{
+  if(e.key === 'Enter') document.getElementById('btn-login').click();
+});
+
+document.getElementById('btn-logout').addEventListener('click', async ()=>{
+  await sb.auth.signOut();
+  showLogin();
+});
+
+async function checkSession(){
+  const { data } = await sb.auth.getSession();
+  if(data && data.session){
+    showApp();
+  } else {
+    showLogin();
+  }
+}
+
+/* ---------------- DATOS: PEDIDOS ---------------- */
+let ordersCache = [];
+
+async function loadOrders(){
+  try{
+    const { data, error } = await sb.from('pedidos').select('*').order('fecha_registro', { ascending:false });
+    if(error) throw error;
+    ordersCache = (data||[]).map(row=>({
+      id: row.id,
+      fechaRegistro: row.fecha_registro,
+      esMaleta: row.es_maleta,
+      maletaCantidad: row.maleta_cantidad,
+      catalogos: row.catalogos || [],
+      pastaDura: row.pasta_dura || null,
+      fechaUltimoDespacho: row.fecha_ultimo_despacho
+    }));
+  }catch(e){
+    ordersCache = [];
+  }
+  return ordersCache;
+}
+
+async function saveOrders(orders){
+  ordersCache = orders;
+  try{
+    const rows = orders.map(o=>({
+      id: o.id,
+      fecha_registro: o.fechaRegistro,
+      es_maleta: o.esMaleta,
+      maleta_cantidad: o.maletaCantidad,
+      catalogos: o.catalogos,
+      pasta_dura: o.pastaDura,
+      fecha_ultimo_despacho: o.fechaUltimoDespacho
+    }));
+    const { error } = await sb.from('pedidos').upsert(rows, { onConflict:'id' });
+    if(error) throw error;
+    return true;
+  }catch(e){
+    return false;
+  }
+}
+
+function computeEstado(order){
+  const cats = order.catalogos || [];
+  if(cats.length === 0) return 'PENDIENTE';
+  const enviados = cats.filter(c => c.enviado).length;
+  if(enviados === 0) return 'PENDIENTE';
+  if(enviados === cats.length) return 'COMPLETO';
+  return 'PARCIAL';
+}
+
+function badgeHtml(estado){
+  const map = { COMPLETO:['completo','Completo'], PARCIAL:['parcial','Parcial'], PENDIENTE:['pendiente','Pendiente'] };
+  const [cls,label] = map[estado];
+  return `<span class="badge ${cls}">${label}</span>`;
+}
+
+function todayStr(){
+  return new Date().toISOString().slice(0,10);
+}
+
+function showMsg(elId, text, type){
+  const el = document.getElementById(elId);
+  el.textContent = text;
+  el.className = 'msg ' + type;
+  setTimeout(()=>{ el.className = 'msg'; el.style.display='none'; }, 3500);
+}
+
+/* ---------------- TABS ---------------- */
+document.querySelectorAll('.tab-btn').forEach(btn=>{
+  btn.addEventListener('click', ()=>{
+    document.querySelectorAll('.tab-btn').forEach(b=>b.classList.remove('active'));
+    document.querySelectorAll('.panel').forEach(p=>p.classList.remove('active'));
+    btn.classList.add('active');
+    document.getElementById('panel-'+btn.dataset.tab).classList.add('active');
+    if(btn.dataset.tab === 'consultar') renderOrdersList();
+    if(btn.dataset.tab === 'despachar') renderDespachoSelect();
+    if(btn.dataset.tab === 'inventario') renderInventarioTab();
+  });
+});
+
+/* ---------------- TAB 1: REGISTRAR ---------------- */
+function buildCatalogList(){
+  const container = document.getElementById('catalog-list');
+  container.innerHTML = CATALOGOS_16.map((nombre, i) => `
+    <div class="catalog-item" data-idx="${i}">
+      <input type="checkbox" class="cat-check" data-idx="${i}">
+      <span>${nombre}</span>
+      <input type="number" class="cat-qty" data-idx="${i}" min="1" placeholder="Cant." disabled>
+    </div>
+  `).join('');
+  container.querySelectorAll('.cat-check').forEach(chk=>{
+    chk.addEventListener('change', (e)=>{
+      const idx = e.target.dataset.idx;
+      const qtyInput = container.querySelector(`.cat-qty[data-idx="${idx}"]`);
+      const row = container.querySelector(`.catalog-item[data-idx="${idx}"]`);
+      qtyInput.disabled = !e.target.checked;
+      row.classList.toggle('disabled', !e.target.checked);
+      if(!e.target.checked) qtyInput.value = '';
+    });
+  });
+}
+buildCatalogList();
+document.getElementById('in-fecha').value = todayStr();
+
+document.getElementById('in-maleta').addEventListener('change', (e)=>{
+  const isMaleta = e.target.checked;
+  document.getElementById('maleta-qty-block').style.display = isMaleta ? 'block' : 'none';
+  document.getElementById('catalogo-list-block').style.display = isMaleta ? 'none' : 'block';
+});
+
+document.getElementById('in-pastadura').addEventListener('change', (e)=>{
+  document.getElementById('pastadura-qty-block').style.display = e.target.checked ? 'block' : 'none';
+});
+
+document.getElementById('btn-guardar-pedido').addEventListener('click', async ()=>{
+  const pedidoId = document.getElementById('in-pedido').value.trim();
+  const fecha = document.getElementById('in-fecha').value;
+  const esMaleta = document.getElementById('in-maleta').checked;
+  const incluyePastaDura = document.getElementById('in-pastadura').checked;
+
+  if(!pedidoId){ showMsg('msg-registrar','Ingresa el número de pedido.','err'); return; }
+  if(!fecha){ showMsg('msg-registrar','Selecciona la fecha de registro.','err'); return; }
+
+  await loadOrders();
+  if(ordersCache.some(o => o.id === pedidoId)){
+    showMsg('msg-registrar', `Ya existe un pedido registrado con el número ${pedidoId}.`, 'err');
+    return;
+  }
+
+  let catalogos = [];
+  if(esMaleta){
+    const cantidad = parseInt(document.getElementById('in-maleta-cantidad').value, 10);
+    if(!cantidad || cantidad <= 0){ showMsg('msg-registrar','Ingresa la cantidad de la maleta.','err'); return; }
+    catalogos = CATALOGOS_16.map(nombre => ({ nombre, cantidad, enviado:false }));
+  } else {
+    const container = document.getElementById('catalog-list');
+    container.querySelectorAll('.cat-check:checked').forEach(chk=>{
+      const idx = chk.dataset.idx;
+      const qty = parseInt(container.querySelector(`.cat-qty[data-idx="${idx}"]`).value, 10);
+      if(qty > 0){
+        catalogos.push({ nombre: CATALOGOS_16[idx], cantidad: qty, enviado:false });
+      }
+    });
+    if(catalogos.length === 0){ showMsg('msg-registrar','Selecciona al menos un catálogo con su cantidad, o marca el pedido como maleta.','err'); return; }
+  }
+
+  let pastaDura = null;
+  if(incluyePastaDura){
+    const cantidad = parseInt(document.getElementById('in-pastadura-cantidad').value, 10);
+    if(!cantidad || cantidad <= 0){ showMsg('msg-registrar','Ingresa la cantidad de pasta dura.','err'); return; }
+    pastaDura = { cantidad, enviado:false };
+  }
+
+  const newOrder = {
+    id: pedidoId,
+    fechaRegistro: fecha,
+    esMaleta,
+    maletaCantidad: esMaleta ? parseInt(document.getElementById('in-maleta-cantidad').value,10) : null,
+    catalogos,
+    pastaDura,
+    fechaUltimoDespacho: null
+  };
+
+  const updated = [...ordersCache, newOrder];
+  const ok = await saveOrders(updated);
+  if(ok){
+    showMsg('msg-registrar', `Pedido ${pedidoId} registrado correctamente.`, 'ok');
+    resetForm();
+  } else {
+    showMsg('msg-registrar', 'No se pudo guardar el pedido. Intenta de nuevo.', 'err');
+  }
+});
+
+function resetForm(){
+  document.getElementById('in-pedido').value = '';
+  document.getElementById('in-fecha').value = todayStr();
+  document.getElementById('in-maleta').checked = false;
+  document.getElementById('in-maleta-cantidad').value = '';
+  document.getElementById('maleta-qty-block').style.display = 'none';
+  document.getElementById('catalogo-list-block').style.display = 'block';
+  document.getElementById('in-pastadura').checked = false;
+  document.getElementById('in-pastadura-cantidad').value = '';
+  document.getElementById('pastadura-qty-block').style.display = 'none';
+  buildCatalogList();
+}
+
+/* ---------------- TAB 2: CONSULTAR ---------------- */
+async function renderOrdersList(){
+  await loadOrders();
+  renderSummary();
+
+  const desde = document.getElementById('f-desde').value;
+  const hasta = document.getElementById('f-hasta').value;
+  const estadoFiltro = document.getElementById('f-estado').value;
+
+  let filtered = ordersCache.filter(o=>{
+    if(desde && o.fechaRegistro < desde) return false;
+    if(hasta && o.fechaRegistro > hasta) return false;
+    const estado = computeEstado(o);
+    if(estadoFiltro === 'pendientes' && estado === 'COMPLETO') return false;
+    if(estadoFiltro === 'completo' && estado !== 'COMPLETO') return false;
+    return true;
+  });
+
+  filtered.sort((a,b)=> b.fechaRegistro.localeCompare(a.fechaRegistro));
+
+  const listEl = document.getElementById('orders-list');
+  if(filtered.length === 0){
+    listEl.innerHTML = `<div class="empty-state">No hay pedidos que coincidan con estos filtros.</div>`;
+    return;
+  }
+
+  listEl.innerHTML = filtered.map(o=>{
+    const estado = computeEstado(o);
+    const faltantes = (o.catalogos||[]).filter(c=>!c.enviado).map(c=>c.nombre);
+    const tipo = o.esMaleta ? `Maleta × ${o.maletaCantidad}` : 'Pedido sencillo';
+    let faltantesHtml = '';
+    if(estado !== 'COMPLETO' && faltantes.length){
+      faltantesHtml = `<div class="order-detail"><b>Faltan:</b> ${faltantes.join(', ')}</div>`;
+    }
+    let pastaHtml = '';
+    if(o.pastaDura){
+      const tag = o.pastaDura.enviado ? '<span class="status-tag si">Enviada</span>' : '<span class="status-tag no">Pendiente</span>';
+      pastaHtml = `<div class="pasta-line">Pasta dura × ${o.pastaDura.cantidad} — ${tag}</div>`;
+    }
+    return `
+      <div class="order-row">
+        <div class="order-head">
+          <div><span class="pedido-num mono">#${o.id}</span> &nbsp; ${badgeHtml(estado)}</div>
+          <div class="fecha mono">${o.fechaRegistro}</div>
+        </div>
+        <div class="order-detail"><b>${tipo}</b> — ${(o.catalogos||[]).length} catálogo(s) en el pedido</div>
+        ${faltantesHtml}
+        ${pastaHtml}
+      </div>
+    `;
+  }).join('');
+}
+
+function renderSummary(){
+  const total = ordersCache.length;
+  const completos = ordersCache.filter(o=>computeEstado(o)==='COMPLETO').length;
+  const parciales = ordersCache.filter(o=>computeEstado(o)==='PARCIAL').length;
+  const pendientes = ordersCache.filter(o=>computeEstado(o)==='PENDIENTE').length;
+  document.getElementById('summary-stats').innerHTML = `
+    <div class="stat"><div class="num">${total}</div><div class="lbl">Pedidos totales</div></div>
+    <div class="stat"><div class="num" style="color:var(--green)">${completos}</div><div class="lbl">Completos</div></div>
+    <div class="stat"><div class="num" style="color:var(--amber)">${parciales}</div><div class="lbl">Parciales</div></div>
+    <div class="stat"><div class="num" style="color:var(--red)">${pendientes}</div><div class="lbl">Pendientes</div></div>
+  `;
+}
+
+['f-desde','f-hasta','f-estado'].forEach(id=>{
+  document.getElementById(id).addEventListener('change', renderOrdersList);
+});
+document.getElementById('btn-limpiar-filtros').addEventListener('click', ()=>{
+  document.getElementById('f-desde').value = '';
+  document.getElementById('f-hasta').value = '';
+  document.getElementById('f-estado').value = 'todos';
+  renderOrdersList();
+});
+
+/* ---------------- TAB 3: DESPACHAR ---------------- */
+async function renderDespachoSelect(){
+  await loadOrders();
+  const sel = document.getElementById('sel-pedido');
+  const sorted = [...ordersCache].sort((a,b)=>{
+    const ea = computeEstado(a), eb = computeEstado(b);
+    if(ea === eb) return b.fechaRegistro.localeCompare(a.fechaRegistro);
+    const order = { PENDIENTE:0, PARCIAL:1, COMPLETO:2 };
+    return order[ea]-order[eb];
+  });
+  sel.innerHTML = '<option value="">Selecciona un pedido...</option>' + sorted.map(o=>{
+    const estado = computeEstado(o);
+    const label = estado === 'COMPLETO' ? 'Completo' : estado === 'PARCIAL' ? 'Parcial' : 'Pendiente';
+    return `<option value="${o.id}">#${o.id} — ${label} — ${o.fechaRegistro}</option>`;
+  }).join('');
+  document.getElementById('despacho-body').innerHTML = '';
+}
+
+document.getElementById('sel-pedido').addEventListener('change', (e)=>{
+  renderDespachoBody(e.target.value);
+});
+
+function renderDespachoBody(pedidoId){
+  const body = document.getElementById('despacho-body');
+  if(!pedidoId){ body.innerHTML = ''; return; }
+  const order = ordersCache.find(o=>o.id === pedidoId);
+  if(!order){ body.innerHTML = ''; return; }
+
+  const estado = computeEstado(order);
+  const tipo = order.esMaleta ? `Maleta × ${order.maletaCantidad}` : 'Pedido sencillo';
+
+  let rowsHtml = order.catalogos.map((c,idx)=>`
+    <div class="despacho-check-row">
+      <input type="checkbox" class="desp-cat-check" data-idx="${idx}" ${c.enviado ? 'checked':''}>
+      <span>${c.nombre}</span>
+      <span class="qty">Cant. ${c.cantidad}</span>
+      <span class="status-tag ${c.enviado ? 'si':'no'}">${c.enviado ? 'Enviado' : 'Pendiente'}</span>
+    </div>
+  `).join('');
+
+  let pastaRow = '';
+  if(order.pastaDura){
+    pastaRow = `
+      <div class="despacho-check-row" style="border-top:2px dashed var(--line); margin-top:6px;">
+        <input type="checkbox" id="desp-pasta-check" ${order.pastaDura.enviado ? 'checked':''}>
+        <span>Pasta dura (aparte de catálogos)</span>
+        <span class="qty">Cant. ${order.pastaDura.cantidad}</span>
+        <span class="status-tag ${order.pastaDura.enviado ? 'si':'no'}">${order.pastaDura.enviado ? 'Enviada' : 'Pendiente'}</span>
+      </div>
+    `;
+  }
+
+  body.innerHTML = `
+    <div class="despacho-order-info">
+      <b>#${order.id}</b> — ${tipo} — ${badgeHtml(estado)}
+    </div>
+    <div class="catalog-list">
+      ${rowsHtml}
+      ${pastaRow}
+    </div>
+    <div style="margin-top:20px;">
+      <button class="primary" id="btn-guardar-despacho">Guardar despacho</button>
+    </div>
+  `;
+
+  document.getElementById('btn-guardar-despacho').addEventListener('click', async ()=>{
+    await loadInventory();
+    const checks = body.querySelectorAll('.desp-cat-check');
+    let inventoryChanged = false;
+    const insuficientes = [];
+
+    checks.forEach(chk=>{
+      const idx = chk.dataset.idx;
+      const cat = order.catalogos[idx];
+      const wasEnviado = cat.enviado;
+      const nowEnviado = chk.checked;
+      if(wasEnviado !== nowEnviado){
+        const item = inventoryCache.items[cat.nombre] || { terminado:0, proceso:0 };
+        if(nowEnviado){
+          if(item.terminado - cat.cantidad < 0) insuficientes.push(cat.nombre);
+          item.terminado = Math.max(0, item.terminado - cat.cantidad);
+        } else {
+          item.terminado = item.terminado + cat.cantidad;
+        }
+        inventoryCache.items[cat.nombre] = item;
+        inventoryChanged = true;
+      }
+      cat.enviado = nowEnviado;
+    });
+
+    const pastaChk = document.getElementById('desp-pasta-check');
+    if(pastaChk && order.pastaDura){
+      order.pastaDura.enviado = pastaChk.checked;
+    }
+    order.fechaUltimoDespacho = todayStr();
+
+    const updated = ordersCache.map(o => o.id === order.id ? order : o);
+    const ok = await saveOrders(updated);
+    if(inventoryChanged) await saveInventory(inventoryCache);
+
+    if(ok){
+      let msg = `Despacho de pedido #${order.id} actualizado.`;
+      if(insuficientes.length){
+        msg += ` Ojo: no había suficiente inventario terminado para ${insuficientes.join(', ')}, quedó en 0 — revisa el conteo.`;
+      }
+      showMsg('msg-despacho', msg, insuficientes.length ? 'err' : 'ok');
+      await renderDespachoSelect();
+      document.getElementById('sel-pedido').value = order.id;
+      renderDespachoBody(order.id);
+    } else {
+      showMsg('msg-despacho', 'No se pudo guardar el despacho. Intenta de nuevo.', 'err');
+    }
+  });
+}
+
+/* ---------------- TAB 4: INVENTARIO Y PRODUCCIÓN ---------------- */
+let inventoryCache = { stockObjetivo: 15, items: {} };
+
+async function loadInventory(){
+  try{
+    const { data: items, error: e1 } = await sb.from('inventario').select('*');
+    if(e1) throw e1;
+    const { data: cfgRows, error: e2 } = await sb.from('config').select('*').eq('key','stock_objetivo');
+    if(e2) throw e2;
+    const stockObjetivo = (cfgRows && cfgRows[0]) ? parseInt(cfgRows[0].value,10) : 15;
+    const itemsMap = {};
+    (items||[]).forEach(r=>{
+      itemsMap[r.catalogo] = { terminado:r.terminado||0, proceso:r.proceso||0, nota:r.nota||'' };
+    });
+    inventoryCache = { stockObjetivo, items: itemsMap };
+  }catch(e){
+    inventoryCache = { stockObjetivo: 15, items: {} };
+  }
+  CATALOGOS_16.forEach(nombre=>{
+    if(!inventoryCache.items[nombre]) inventoryCache.items[nombre] = { terminado:0, proceso:0, nota:'' };
+  });
+  return inventoryCache;
+}
+
+async function saveInventory(data){
+  inventoryCache = data;
+  try{
+    const rows = CATALOGOS_16.map(nombre=>({
+      catalogo: nombre,
+      terminado: (data.items[nombre] && data.items[nombre].terminado) || 0,
+      proceso: (data.items[nombre] && data.items[nombre].proceso) || 0,
+      nota: (data.items[nombre] && data.items[nombre].nota) || null
+    }));
+    const { error: e1 } = await sb.from('inventario').upsert(rows, { onConflict:'catalogo' });
+    if(e1) throw e1;
+    const { error: e2 } = await sb.from('config').upsert(
+      { key:'stock_objetivo', value:String(data.stockObjetivo||0) }, { onConflict:'key' }
+    );
+    if(e2) throw e2;
+    return true;
+  }catch(e){
+    return false;
+  }
+}
+
+function computePendientePorCatalogo(){
+  const pendientes = {};
+  CATALOGOS_16.forEach(n=>pendientes[n]=0);
+  ordersCache.forEach(order=>{
+    (order.catalogos||[]).forEach(c=>{
+      if(!c.enviado){
+        pendientes[c.nombre] = (pendientes[c.nombre]||0) + c.cantidad;
+      }
+    });
+  });
+  return pendientes;
+}
+
+async function renderInventarioTab(){
+  await loadOrders();
+  await loadInventory();
+
+  document.getElementById('in-stock-objetivo').value = inventoryCache.stockObjetivo;
+
+  const prodSelect = document.getElementById('prod-catalogo');
+  if(prodSelect.options.length === 0){
+    prodSelect.innerHTML = CATALOGOS_16.map(n=>`<option value="${n}">${n}</option>`).join('');
+  }
+  const procSelect = document.getElementById('proc-catalogo');
+  if(procSelect.options.length === 0){
+    procSelect.innerHTML = CATALOGOS_16.map(n=>`<option value="${n}">${n}</option>`).join('');
+  }
+
+  const inputBody = document.getElementById('inv-input-body');
+  inputBody.innerHTML = CATALOGOS_16.map(nombre=>{
+    const item = inventoryCache.items[nombre] || { terminado:0, proceso:0 };
+    return `
+      <tr>
+        <td>${nombre}</td>
+        <td><input type="number" class="inv-terminado" data-nombre="${nombre}" min="0" value="${item.terminado}"></td>
+        <td><input type="number" class="inv-proceso" data-nombre="${nombre}" min="0" value="${item.proceso}"></td>
+      </tr>
+    `;
+  }).join('');
+
+  renderMetaProduccion();
+}
+
+function renderMetaProduccion(){
+  const pendientes = computePendientePorCatalogo();
+  const objetivo = inventoryCache.stockObjetivo || 0;
+
+  const rows = CATALOGOS_16.map(nombre=>{
+    const item = inventoryCache.items[nombre] || { terminado:0, proceso:0 };
+    const pendiente = pendientes[nombre] || 0;
+    const meta = Math.max(0, (pendiente + objetivo) - item.terminado - item.proceso);
+    const exceso = item.terminado > (pendiente + objetivo);
+    return { nombre, pendiente, terminado:item.terminado, proceso:item.proceso, meta, exceso, nota:item.nota||'' };
+  });
+
+  rows.sort((a,b)=> b.meta - a.meta);
+
+  document.getElementById('inv-result-body').innerHTML = rows.map(r=>`
+    <tr>
+      <td>${r.nombre}</td>
+      <td class="num">${r.pendiente}</td>
+      <td class="num">${r.terminado}</td>
+      <td class="num">${r.proceso}</td>
+      <td class="num">${inventoryCache.stockObjetivo}</td>
+      <td class="num meta" style="color:${r.meta>0 ? 'var(--amber)' : 'var(--green)'}">${r.meta}</td>
+      <td>${r.exceso ? '<span class="tag-exceso">Exceso de stock</span>' : (r.nota ? `<span class="order-detail" style="margin:0;">${r.nota}</span>` : '')}</td>
+    </tr>
+  `).join('');
+}
+
+document.getElementById('in-stock-objetivo').addEventListener('input', (e)=>{
+  inventoryCache.stockObjetivo = parseInt(e.target.value,10) || 0;
+  renderMetaProduccion();
+});
+
+document.getElementById('btn-guardar-inventario').addEventListener('click', async ()=>{
+  const items = {};
+  CATALOGOS_16.forEach(nombre=>{
+    const terminadoInput = document.querySelector(`.inv-terminado[data-nombre="${nombre}"]`);
+    const procesoInput = document.querySelector(`.inv-proceso[data-nombre="${nombre}"]`);
+    items[nombre] = {
+      terminado: parseInt(terminadoInput.value,10) || 0,
+      proceso: parseInt(procesoInput.value,10) || 0
+    };
+  });
+  const data = {
+    stockObjetivo: parseInt(document.getElementById('in-stock-objetivo').value,10) || 0,
+    items
+  };
+  const ok = await saveInventory(data);
+  if(ok){
+    showMsg('msg-inventario', 'Inventario guardado correctamente.', 'ok');
+    renderMetaProduccion();
+  } else {
+    showMsg('msg-inventario', 'No se pudo guardar el inventario. Intenta de nuevo.', 'err');
+  }
+});
+
+document.getElementById('btn-registrar-en-proceso').addEventListener('click', async ()=>{
+  const nombre = document.getElementById('proc-catalogo').value;
+  const cantidad = parseInt(document.getElementById('proc-cantidad').value,10);
+  const nota = document.getElementById('proc-nota').value.trim();
+  if(!cantidad || cantidad <= 0){ showMsg('msg-en-proceso','Ingresa una cantidad válida.','err'); return; }
+
+  await loadInventory();
+  const item = inventoryCache.items[nombre] || { terminado:0, proceso:0 };
+  item.proceso += cantidad;
+  if(nota) item.nota = nota;
+  inventoryCache.items[nombre] = item;
+
+  const ok = await saveInventory(inventoryCache);
+  if(ok){
+    showMsg('msg-en-proceso', `Se agregaron ${cantidad} unidades de ${nombre} a "en proceso".`, 'ok');
+    document.getElementById('proc-cantidad').value = '';
+    document.getElementById('proc-nota').value = '';
+    renderInventarioTab();
+  } else {
+    showMsg('msg-en-proceso', 'No se pudo registrar. Intenta de nuevo.', 'err');
+  }
+});
+
+document.getElementById('btn-registrar-produccion').addEventListener('click', async ()=>{
+  const nombre = document.getElementById('prod-catalogo').value;
+  const cantidad = parseInt(document.getElementById('prod-cantidad').value,10);
+  if(!cantidad || cantidad <= 0){ showMsg('msg-produccion','Ingresa una cantidad válida.','err'); return; }
+
+  await loadInventory();
+  const item = inventoryCache.items[nombre] || { terminado:0, proceso:0 };
+  item.terminado += cantidad;
+  if(document.getElementById('prod-de-proceso').checked){
+    item.proceso = Math.max(0, item.proceso - cantidad);
+  }
+  inventoryCache.items[nombre] = item;
+
+  const ok = await saveInventory(inventoryCache);
+  if(ok){
+    showMsg('msg-produccion', `Se agregaron ${cantidad} unidades de ${nombre} al inventario terminado.`, 'ok');
+    document.getElementById('prod-cantidad').value = '';
+    renderInventarioTab();
+  } else {
+    showMsg('msg-produccion', 'No se pudo registrar la producción. Intenta de nuevo.', 'err');
+  }
+});
+
+/* ---------------- INIT ---------------- */
+checkSession();
+</script>
+</body>
+</html>

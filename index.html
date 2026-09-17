@@ -295,6 +295,21 @@
   table.inv-table td.meta{ font-weight:600; }
   .tag-exceso{ font-size:11.5px; color:var(--ink-soft); background:var(--brand-soft); padding:2px 8px; border-radius:20px; }
 
+  table.inv-table tr.row-principal{ background:var(--brand-soft); }
+  table.inv-table tr.row-principal td:first-child{ font-weight:600; color:var(--brand); }
+  .tag-principal{
+    font-size:10.5px; font-weight:600; text-transform:uppercase; letter-spacing:0.3px;
+    color:var(--brand); background:#FFFFFF; border:1px solid var(--brand);
+    padding:1px 6px; border-radius:20px; margin-left:8px;
+  }
+  tr.row-group-label td{
+    padding-top:16px; padding-bottom:4px;
+    font-size:11.5px; text-transform:uppercase; letter-spacing:0.4px;
+    color:var(--ink-soft); border-bottom:none;
+  }
+  td.check-cell{ text-align:center; }
+  td.check-cell input[type=checkbox]{ width:18px; height:18px; cursor:pointer; }
+
   #auth-overlay{
     position:fixed; inset:0;
     background:var(--bg);
@@ -517,6 +532,7 @@
               <th>En proceso</th>
               <th>Objetivo</th>
               <th>Meta a producir</th>
+              <th>Cumplido</th>
               <th>Nota</th>
             </tr>
           </thead>
@@ -533,6 +549,10 @@ const CATALOGOS_16 = [
   "BK Screen Jacquard","Screen Soltis","Sheer","Sheer II","Tradicional",
   "Películas","Exteriores","Eleganza","Macro Aluminio","Madera",
   "Miniperciana","Screen Collection","Harmony","Urbanik","Vertical","Hospitalaria"
+];
+
+const CATALOGOS_PRINCIPALES = [
+  "BK Screen Jacquard","Screen Soltis","Sheer","Sheer II","Tradicional","Películas","Exteriores"
 ];
 
 /* ---------------- SUPABASE ---------------- */
@@ -974,14 +994,14 @@ async function loadInventory(){
     const stockObjetivo = (cfgRows && cfgRows[0]) ? parseInt(cfgRows[0].value,10) : 15;
     const itemsMap = {};
     (items||[]).forEach(r=>{
-      itemsMap[r.catalogo] = { terminado:r.terminado||0, proceso:r.proceso||0, nota:r.nota||'' };
+      itemsMap[r.catalogo] = { terminado:r.terminado||0, proceso:r.proceso||0, nota:r.nota||'', cumplido: !!r.meta_cumplida };
     });
     inventoryCache = { stockObjetivo, items: itemsMap };
   }catch(e){
     inventoryCache = { stockObjetivo: 15, items: {} };
   }
   CATALOGOS_16.forEach(nombre=>{
-    if(!inventoryCache.items[nombre]) inventoryCache.items[nombre] = { terminado:0, proceso:0, nota:'' };
+    if(!inventoryCache.items[nombre]) inventoryCache.items[nombre] = { terminado:0, proceso:0, nota:'', cumplido:false };
   });
   return inventoryCache;
 }
@@ -993,7 +1013,8 @@ async function saveInventory(data){
       catalogo: nombre,
       terminado: (data.items[nombre] && data.items[nombre].terminado) || 0,
       proceso: (data.items[nombre] && data.items[nombre].proceso) || 0,
-      nota: (data.items[nombre] && data.items[nombre].nota) || null
+      nota: (data.items[nombre] && data.items[nombre].nota) || null,
+      meta_cumplida: !!(data.items[nombre] && data.items[nombre].cumplido)
     }));
     const { error: e1 } = await sb.from('inventario').upsert(rows, { onConflict:'catalogo' });
     if(e1) throw e1;
@@ -1059,22 +1080,45 @@ function renderMetaProduccion(){
     const pendiente = pendientes[nombre] || 0;
     const meta = Math.max(0, (pendiente + objetivo) - item.terminado - item.proceso);
     const exceso = item.terminado > (pendiente + objetivo);
-    return { nombre, pendiente, terminado:item.terminado, proceso:item.proceso, meta, exceso, nota:item.nota||'' };
+    return {
+      nombre, pendiente, terminado:item.terminado, proceso:item.proceso, meta, exceso,
+      nota:item.nota||'', cumplido: !!item.cumplido,
+      principal: CATALOGOS_PRINCIPALES.includes(nombre)
+    };
   });
 
-  rows.sort((a,b)=> b.meta - a.meta);
+  const principales = rows.filter(r=>r.principal).sort((a,b)=> b.meta - a.meta);
+  const otros = rows.filter(r=>!r.principal).sort((a,b)=> b.meta - a.meta);
 
-  document.getElementById('inv-result-body').innerHTML = rows.map(r=>`
-    <tr>
-      <td>${r.nombre}</td>
+  function rowHtml(r){
+    return `
+    <tr class="${r.principal ? 'row-principal' : ''}">
+      <td>${r.nombre}${r.principal ? '<span class="tag-principal">Principal</span>' : ''}</td>
       <td class="num">${r.pendiente}</td>
       <td class="num">${r.terminado}</td>
       <td class="num">${r.proceso}</td>
       <td class="num">${inventoryCache.stockObjetivo}</td>
       <td class="num meta" style="color:${r.meta>0 ? 'var(--amber)' : 'var(--green)'}">${r.meta}</td>
+      <td class="check-cell"><input type="checkbox" class="meta-cumplido-check" data-nombre="${r.nombre}" ${r.cumplido ? 'checked':''}></td>
       <td>${r.exceso ? '<span class="tag-exceso">Exceso de stock</span>' : (r.nota ? `<span class="order-detail" style="margin:0;">${r.nota}</span>` : '')}</td>
-    </tr>
-  `).join('');
+    </tr>`;
+  }
+
+  const otrosLabel = `<tr class="row-group-label"><td colspan="8">Otros catálogos</td></tr>`;
+
+  document.getElementById('inv-result-body').innerHTML =
+    principales.map(rowHtml).join('') +
+    otrosLabel +
+    otros.map(rowHtml).join('');
+
+  document.querySelectorAll('.meta-cumplido-check').forEach(chk=>{
+    chk.addEventListener('change', async (e)=>{
+      const nombre = e.target.dataset.nombre;
+      if(!inventoryCache.items[nombre]) inventoryCache.items[nombre] = { terminado:0, proceso:0 };
+      inventoryCache.items[nombre].cumplido = e.target.checked;
+      await saveInventory(inventoryCache);
+    });
+  });
 }
 
 document.getElementById('in-stock-objetivo').addEventListener('input', (e)=>{

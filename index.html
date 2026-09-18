@@ -403,6 +403,7 @@
     <button class="tab-btn active" data-tab="registrar">Registrar pedido</button>
     <button class="tab-btn" data-tab="consultar">Pedidos y despachos</button>
     <button class="tab-btn" data-tab="inventario">Inventario y producción</button>
+    <button class="tab-btn" data-tab="historico">Histórico</button>
   </nav>
 
   <!-- TAB 1: REGISTRAR -->
@@ -469,9 +470,9 @@
         <div class="field" style="margin-bottom:0;">
           <label for="f-estado">Mostrar</label>
           <select id="f-estado">
-            <option value="todos">Todos los pedidos</option>
-            <option value="pendientes">Solo pendientes (parcial + pendiente)</option>
-            <option value="completo">Solo completos</option>
+            <option value="todos">Todos (pendientes + parciales)</option>
+            <option value="parcial">Solo parciales</option>
+            <option value="pendiente">Solo pendientes (sin ningún envío)</option>
           </select>
         </div>
         <button class="secondary" id="btn-limpiar-filtros">Limpiar filtros</button>
@@ -570,6 +571,28 @@
         </table>
       </div>
     </div>
+  </section>
+
+  <!-- TAB 5: HISTÓRICO -->
+  <section class="panel" id="panel-historico">
+    <div class="card">
+      <div class="field">
+        <label for="h-busqueda">Buscar por número de pedido o catálogo</label>
+        <input type="text" id="h-busqueda" placeholder="Ej. 598494 o Sheer">
+      </div>
+      <div class="filters" style="grid-template-columns:1fr 1fr auto;">
+        <div class="field" style="margin-bottom:0;">
+          <label for="h-desde">Completado desde</label>
+          <input type="date" id="h-desde">
+        </div>
+        <div class="field" style="margin-bottom:0;">
+          <label for="h-hasta">Completado hasta</label>
+          <input type="date" id="h-hasta">
+        </div>
+        <button class="secondary" id="btn-limpiar-historico">Limpiar filtros</button>
+      </div>
+    </div>
+    <div id="historico-list"></div>
   </section>
 
 </div>
@@ -714,6 +737,7 @@ document.querySelectorAll('.tab-btn').forEach(btn=>{
     document.getElementById('panel-'+btn.dataset.tab).classList.add('active');
     if(btn.dataset.tab === 'consultar') renderOrdersList();
     if(btn.dataset.tab === 'inventario') renderInventarioTab();
+    if(btn.dataset.tab === 'historico') renderHistorico();
   });
 });
 
@@ -838,11 +862,12 @@ async function renderOrdersList(){
   const busqueda = document.getElementById('f-busqueda').value.trim().toLowerCase();
 
   let filtered = ordersCache.filter(o=>{
+    const estado = computeEstado(o);
+    if(estado === 'COMPLETO') return false;
     if(desde && o.fechaRegistro < desde) return false;
     if(hasta && o.fechaRegistro > hasta) return false;
-    const estado = computeEstado(o);
-    if(estadoFiltro === 'pendientes' && estado === 'COMPLETO') return false;
-    if(estadoFiltro === 'completo' && estado !== 'COMPLETO') return false;
+    if(estadoFiltro === 'parcial' && estado !== 'PARCIAL') return false;
+    if(estadoFiltro === 'pendiente' && estado !== 'PENDIENTE') return false;
     if(busqueda){
       const pedidoMatch = o.id.toLowerCase().includes(busqueda);
       const catalogoMatch = (o.catalogos||[]).some(c => c.nombre.toLowerCase().includes(busqueda));
@@ -860,58 +885,63 @@ async function renderOrdersList(){
     return;
   }
 
-  listEl.innerHTML = filtered.map(o=>{
-    const estado = computeEstado(o);
-    const tipo = o.esMaleta ? `Maleta × ${o.maletaCantidad}` : 'Pedido sencillo';
+  listEl.innerHTML = filtered.map(buildOrderCardHtml).join('');
+  attachOrderCardListeners(listEl);
+}
 
-    const catalogosHtml = (o.catalogos||[]).map((c,idx)=>`
-      <div class="check-item">
-        <span>${c.nombre}</span>
-        <span class="qty">${c.cantidad}</span>
-        ${c.enviado
-          ? `<span class="sent-tag" data-pedido="${o.id}" data-idx="${idx}" data-kind="catalogo">Enviado ✓</span>`
-          : `<input type="checkbox" data-pedido="${o.id}" data-idx="${idx}" data-kind="catalogo">`}
-      </div>
-    `).join('');
+function buildOrderCardHtml(o){
+  const estado = computeEstado(o);
+  const tipo = o.esMaleta ? `Maleta × ${o.maletaCantidad}` : 'Pedido sencillo';
 
-    let pastaHtml = '';
-    if(o.pastaDura){
-      pastaHtml = `
-        <div class="check-item" style="border-top:1px dashed var(--line); margin-top:4px; padding-top:10px;">
-          <span>Pasta dura (aparte de catálogos)</span>
-          <span class="qty">${o.pastaDura.cantidad}</span>
-          ${o.pastaDura.enviado
-            ? `<span class="sent-tag" data-pedido="${o.id}" data-kind="pasta">Enviada ✓</span>`
-            : `<input type="checkbox" data-pedido="${o.id}" data-kind="pasta">`}
-        </div>
-      `;
-    }
+  const catalogosHtml = (o.catalogos||[]).map((c,idx)=>`
+    <div class="check-item">
+      <span>${c.nombre}</span>
+      <span class="qty">${c.cantidad}</span>
+      ${c.enviado
+        ? `<span class="sent-tag" data-pedido="${o.id}" data-idx="${idx}" data-kind="catalogo">Enviado ✓</span>`
+        : `<input type="checkbox" data-pedido="${o.id}" data-idx="${idx}" data-kind="catalogo">`}
+    </div>
+  `).join('');
 
-    return `
-      <div class="order-row">
-        <div class="order-head">
-          <div><span class="pedido-num mono">#${o.id}</span> &nbsp; ${badgeHtml(estado)}</div>
-          <div class="fecha mono">${o.fechaRegistro}</div>
-        </div>
-        <div class="order-detail"><b>${tipo}</b> — ${(o.catalogos||[]).length} catálogo(s) en el pedido</div>
-        <div class="order-checklist">
-          ${catalogosHtml}
-          ${pastaHtml}
-        </div>
+  let pastaHtml = '';
+  if(o.pastaDura){
+    pastaHtml = `
+      <div class="check-item" style="border-top:1px dashed var(--line); margin-top:4px; padding-top:10px;">
+        <span>Pasta dura (aparte de catálogos)</span>
+        <span class="qty">${o.pastaDura.cantidad}</span>
+        ${o.pastaDura.enviado
+          ? `<span class="sent-tag" data-pedido="${o.id}" data-kind="pasta">Enviada ✓</span>`
+          : `<input type="checkbox" data-pedido="${o.id}" data-kind="pasta">`}
       </div>
     `;
-  }).join('');
+  }
 
-  listEl.querySelectorAll('input[type=checkbox][data-kind="catalogo"]').forEach(chk=>{
+  return `
+    <div class="order-row">
+      <div class="order-head">
+        <div><span class="pedido-num mono">#${o.id}</span> &nbsp; ${badgeHtml(estado)}</div>
+        <div class="fecha mono">${o.fechaRegistro}</div>
+      </div>
+      <div class="order-detail"><b>${tipo}</b> — ${(o.catalogos||[]).length} catálogo(s) en el pedido${o.fechaUltimoDespacho ? ` — último despacho: ${o.fechaUltimoDespacho}` : ''}</div>
+      <div class="order-checklist">
+        ${catalogosHtml}
+        ${pastaHtml}
+      </div>
+    </div>
+  `;
+}
+
+function attachOrderCardListeners(containerEl){
+  containerEl.querySelectorAll('input[type=checkbox][data-kind="catalogo"]').forEach(chk=>{
     chk.addEventListener('change', (e)=> toggleCatalogoEnviado(e.target.dataset.pedido, parseInt(e.target.dataset.idx,10)));
   });
-  listEl.querySelectorAll('input[type=checkbox][data-kind="pasta"]').forEach(chk=>{
+  containerEl.querySelectorAll('input[type=checkbox][data-kind="pasta"]').forEach(chk=>{
     chk.addEventListener('change', (e)=> togglePastaDuraEnviado(e.target.dataset.pedido, true));
   });
-  listEl.querySelectorAll('.sent-tag[data-kind="catalogo"]').forEach(tag=>{
+  containerEl.querySelectorAll('.sent-tag[data-kind="catalogo"]').forEach(tag=>{
     tag.addEventListener('click', (e)=> toggleCatalogoEnviado(e.target.dataset.pedido, parseInt(e.target.dataset.idx,10)));
   });
-  listEl.querySelectorAll('.sent-tag[data-kind="pasta"]').forEach(tag=>{
+  containerEl.querySelectorAll('.sent-tag[data-kind="pasta"]').forEach(tag=>{
     tag.addEventListener('click', (e)=> togglePastaDuraEnviado(e.target.dataset.pedido, false));
   });
 }
@@ -943,9 +973,11 @@ async function toggleCatalogoEnviado(pedidoId, idx){
       showMsg('msg-consultar', `Ojo: no había suficiente inventario terminado de ${cat.nombre}, quedó en 0 — revisa el conteo.`, 'err');
     }
     renderOrdersList();
+    renderHistorico();
   } else {
     showMsg('msg-consultar', 'No se pudo guardar el cambio. Intenta de nuevo.', 'err');
     renderOrdersList();
+    renderHistorico();
   }
 }
 
@@ -957,6 +989,7 @@ async function togglePastaDuraEnviado(pedidoId){
   const ok = await saveOrders(ordersCache);
   if(!ok){ showMsg('msg-consultar', 'No se pudo guardar el cambio. Intenta de nuevo.', 'err'); }
   renderOrdersList();
+  renderHistorico();
 }
 
 function renderSummary(){
@@ -971,6 +1004,50 @@ function renderSummary(){
     <div class="stat"><div class="num" style="color:var(--red)">${pendientes}</div><div class="lbl">Pendientes</div></div>
   `;
 }
+
+async function renderHistorico(){
+  await loadOrders();
+
+  const desde = document.getElementById('h-desde').value;
+  const hasta = document.getElementById('h-hasta').value;
+  const busqueda = document.getElementById('h-busqueda').value.trim().toLowerCase();
+
+  let filtered = ordersCache.filter(o=>{
+    if(computeEstado(o) !== 'COMPLETO') return false;
+    const fechaRef = o.fechaUltimoDespacho || o.fechaRegistro;
+    if(desde && fechaRef < desde) return false;
+    if(hasta && fechaRef > hasta) return false;
+    if(busqueda){
+      const pedidoMatch = o.id.toLowerCase().includes(busqueda);
+      const catalogoMatch = (o.catalogos||[]).some(c => c.nombre.toLowerCase().includes(busqueda));
+      const pastaMatch = o.pastaDura && 'pasta dura'.includes(busqueda);
+      if(!pedidoMatch && !catalogoMatch && !pastaMatch) return false;
+    }
+    return true;
+  });
+
+  filtered.sort((a,b)=> (b.fechaUltimoDespacho||b.fechaRegistro).localeCompare(a.fechaUltimoDespacho||a.fechaRegistro));
+
+  const listEl = document.getElementById('historico-list');
+  if(filtered.length === 0){
+    listEl.innerHTML = `<div class="empty-state">Todavía no hay pedidos completados que coincidan con estos filtros.</div>`;
+    return;
+  }
+
+  listEl.innerHTML = filtered.map(buildOrderCardHtml).join('');
+  attachOrderCardListeners(listEl);
+}
+
+['h-desde','h-hasta'].forEach(id=>{
+  document.getElementById(id).addEventListener('change', renderHistorico);
+});
+document.getElementById('h-busqueda').addEventListener('input', renderHistorico);
+document.getElementById('btn-limpiar-historico').addEventListener('click', ()=>{
+  document.getElementById('h-desde').value = '';
+  document.getElementById('h-hasta').value = '';
+  document.getElementById('h-busqueda').value = '';
+  renderHistorico();
+});
 
 ['f-desde','f-hasta','f-estado'].forEach(id=>{
   document.getElementById(id).addEventListener('change', renderOrdersList);

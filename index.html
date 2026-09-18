@@ -331,6 +331,28 @@
     font-family:'IBM Plex Sans', sans-serif;
   }
   #btn-logout:hover{ border-color:var(--ink-soft); color:var(--ink); }
+
+  .order-checklist{
+    margin-top:12px;
+    border-top:1px solid var(--line);
+    padding-top:10px;
+  }
+  .check-item{
+    display:grid;
+    grid-template-columns:1fr 60px 110px;
+    align-items:center;
+    gap:10px;
+    padding:6px 0;
+    font-size:13.5px;
+  }
+  .check-item .qty{ color:var(--ink-soft); text-align:right; }
+  .check-item input[type=checkbox]{ width:18px; height:18px; cursor:pointer; justify-self:end; }
+  .check-item .sent-tag{
+    justify-self:end;
+    font-size:12px; font-weight:600; color:var(--green);
+    background:var(--green-soft); padding:3px 10px; border-radius:20px;
+    cursor:pointer;
+  }
 </style>
 </head>
 <body>
@@ -362,8 +384,7 @@
 
   <nav class="tabs">
     <button class="tab-btn active" data-tab="registrar">Registrar pedido</button>
-    <button class="tab-btn" data-tab="consultar">Ver pedidos</button>
-    <button class="tab-btn" data-tab="despachar">Registrar despacho</button>
+    <button class="tab-btn" data-tab="consultar">Pedidos y despachos</button>
     <button class="tab-btn" data-tab="inventario">Inventario y producción</button>
   </nav>
 
@@ -410,10 +431,11 @@
     </div>
   </section>
 
-  <!-- TAB 2: CONSULTAR -->
+  <!-- TAB 2: PEDIDOS Y DESPACHOS (unificado) -->
   <section class="panel" id="panel-consultar">
     <div class="summary" id="summary-stats"></div>
     <div class="card">
+      <div id="msg-consultar" class="msg"></div>
       <div class="filters">
         <div class="field" style="margin-bottom:0;">
           <label for="f-desde">Fecha desde</label>
@@ -435,18 +457,6 @@
       </div>
     </div>
     <div id="orders-list"></div>
-  </section>
-
-  <!-- TAB 3: DESPACHAR -->
-  <section class="panel" id="panel-despachar">
-    <div class="card">
-      <div id="msg-despacho" class="msg"></div>
-      <div class="field despacho-select">
-        <label for="sel-pedido">Buscar pedido</label>
-        <select id="sel-pedido"><option value="">Selecciona un pedido...</option></select>
-      </div>
-      <div id="despacho-body"></div>
-    </div>
   </section>
 
   <!-- TAB 4: INVENTARIO Y PRODUCCIÓN -->
@@ -642,7 +652,10 @@ async function saveOrders(orders){
 
 function computeEstado(order){
   const cats = order.catalogos || [];
-  if(cats.length === 0) return 'PENDIENTE';
+  if(cats.length === 0){
+    if(order.pastaDura) return order.pastaDura.enviado ? 'COMPLETO' : 'PENDIENTE';
+    return 'PENDIENTE';
+  }
   const enviados = cats.filter(c => c.enviado).length;
   if(enviados === 0) return 'PENDIENTE';
   if(enviados === cats.length) return 'COMPLETO';
@@ -674,7 +687,6 @@ document.querySelectorAll('.tab-btn').forEach(btn=>{
     btn.classList.add('active');
     document.getElementById('panel-'+btn.dataset.tab).classList.add('active');
     if(btn.dataset.tab === 'consultar') renderOrdersList();
-    if(btn.dataset.tab === 'despachar') renderDespachoSelect();
     if(btn.dataset.tab === 'inventario') renderInventarioTab();
   });
 });
@@ -742,7 +754,6 @@ document.getElementById('btn-guardar-pedido').addEventListener('click', async ()
         catalogos.push({ nombre: CATALOGOS_16[idx], cantidad: qty, enviado:false });
       }
     });
-    if(catalogos.length === 0){ showMsg('msg-registrar','Selecciona al menos un catálogo con su cantidad, o marca el pedido como maleta.','err'); return; }
   }
 
   let pastaDura = null;
@@ -750,6 +761,11 @@ document.getElementById('btn-guardar-pedido').addEventListener('click', async ()
     const cantidad = parseInt(document.getElementById('in-pastadura-cantidad').value, 10);
     if(!cantidad || cantidad <= 0){ showMsg('msg-registrar','Ingresa la cantidad de pasta dura.','err'); return; }
     pastaDura = { cantidad, enviado:false };
+  }
+
+  if(catalogos.length === 0 && !pastaDura){
+    showMsg('msg-registrar','Selecciona al menos un catálogo, marca el pedido como maleta, o agrega pasta dura.','err');
+    return;
   }
 
   const newOrder = {
@@ -813,17 +829,31 @@ async function renderOrdersList(){
 
   listEl.innerHTML = filtered.map(o=>{
     const estado = computeEstado(o);
-    const faltantes = (o.catalogos||[]).filter(c=>!c.enviado).map(c=>c.nombre);
     const tipo = o.esMaleta ? `Maleta × ${o.maletaCantidad}` : 'Pedido sencillo';
-    let faltantesHtml = '';
-    if(estado !== 'COMPLETO' && faltantes.length){
-      faltantesHtml = `<div class="order-detail"><b>Faltan:</b> ${faltantes.join(', ')}</div>`;
-    }
+
+    const catalogosHtml = (o.catalogos||[]).map((c,idx)=>`
+      <div class="check-item">
+        <span>${c.nombre}</span>
+        <span class="qty">${c.cantidad}</span>
+        ${c.enviado
+          ? `<span class="sent-tag" data-pedido="${o.id}" data-idx="${idx}" data-kind="catalogo">Enviado ✓</span>`
+          : `<input type="checkbox" data-pedido="${o.id}" data-idx="${idx}" data-kind="catalogo">`}
+      </div>
+    `).join('');
+
     let pastaHtml = '';
     if(o.pastaDura){
-      const tag = o.pastaDura.enviado ? '<span class="status-tag si">Enviada</span>' : '<span class="status-tag no">Pendiente</span>';
-      pastaHtml = `<div class="pasta-line">Pasta dura × ${o.pastaDura.cantidad} — ${tag}</div>`;
+      pastaHtml = `
+        <div class="check-item" style="border-top:1px dashed var(--line); margin-top:4px; padding-top:10px;">
+          <span>Pasta dura (aparte de catálogos)</span>
+          <span class="qty">${o.pastaDura.cantidad}</span>
+          ${o.pastaDura.enviado
+            ? `<span class="sent-tag" data-pedido="${o.id}" data-kind="pasta">Enviada ✓</span>`
+            : `<input type="checkbox" data-pedido="${o.id}" data-kind="pasta">`}
+        </div>
+      `;
     }
+
     return `
       <div class="order-row">
         <div class="order-head">
@@ -831,11 +861,69 @@ async function renderOrdersList(){
           <div class="fecha mono">${o.fechaRegistro}</div>
         </div>
         <div class="order-detail"><b>${tipo}</b> — ${(o.catalogos||[]).length} catálogo(s) en el pedido</div>
-        ${faltantesHtml}
-        ${pastaHtml}
+        <div class="order-checklist">
+          ${catalogosHtml}
+          ${pastaHtml}
+        </div>
       </div>
     `;
   }).join('');
+
+  listEl.querySelectorAll('input[type=checkbox][data-kind="catalogo"]').forEach(chk=>{
+    chk.addEventListener('change', (e)=> toggleCatalogoEnviado(e.target.dataset.pedido, parseInt(e.target.dataset.idx,10)));
+  });
+  listEl.querySelectorAll('input[type=checkbox][data-kind="pasta"]').forEach(chk=>{
+    chk.addEventListener('change', (e)=> togglePastaDuraEnviado(e.target.dataset.pedido, true));
+  });
+  listEl.querySelectorAll('.sent-tag[data-kind="catalogo"]').forEach(tag=>{
+    tag.addEventListener('click', (e)=> toggleCatalogoEnviado(e.target.dataset.pedido, parseInt(e.target.dataset.idx,10)));
+  });
+  listEl.querySelectorAll('.sent-tag[data-kind="pasta"]').forEach(tag=>{
+    tag.addEventListener('click', (e)=> togglePastaDuraEnviado(e.target.dataset.pedido, false));
+  });
+}
+
+async function toggleCatalogoEnviado(pedidoId, idx){
+  const order = ordersCache.find(o=>o.id === pedidoId);
+  if(!order) return;
+  const cat = order.catalogos[idx];
+  const nowEnviado = !cat.enviado;
+
+  await loadInventory();
+  const item = inventoryCache.items[cat.nombre] || { terminado:0, proceso:0 };
+  let insuficiente = false;
+  if(nowEnviado){
+    if(item.terminado - cat.cantidad < 0) insuficiente = true;
+    item.terminado = Math.max(0, item.terminado - cat.cantidad);
+  } else {
+    item.terminado = item.terminado + cat.cantidad;
+  }
+  inventoryCache.items[cat.nombre] = item;
+  cat.enviado = nowEnviado;
+  order.fechaUltimoDespacho = todayStr();
+
+  const ok = await saveOrders(ordersCache);
+  await saveInventory(inventoryCache);
+
+  if(ok){
+    if(insuficiente){
+      showMsg('msg-consultar', `Ojo: no había suficiente inventario terminado de ${cat.nombre}, quedó en 0 — revisa el conteo.`, 'err');
+    }
+    renderOrdersList();
+  } else {
+    showMsg('msg-consultar', 'No se pudo guardar el cambio. Intenta de nuevo.', 'err');
+    renderOrdersList();
+  }
+}
+
+async function togglePastaDuraEnviado(pedidoId){
+  const order = ordersCache.find(o=>o.id === pedidoId);
+  if(!order || !order.pastaDura) return;
+  order.pastaDura.enviado = !order.pastaDura.enviado;
+  order.fechaUltimoDespacho = todayStr();
+  const ok = await saveOrders(ordersCache);
+  if(!ok){ showMsg('msg-consultar', 'No se pudo guardar el cambio. Intenta de nuevo.', 'err'); }
+  renderOrdersList();
 }
 
 function renderSummary(){
@@ -860,121 +948,6 @@ document.getElementById('btn-limpiar-filtros').addEventListener('click', ()=>{
   document.getElementById('f-estado').value = 'todos';
   renderOrdersList();
 });
-
-/* ---------------- TAB 3: DESPACHAR ---------------- */
-async function renderDespachoSelect(){
-  await loadOrders();
-  const sel = document.getElementById('sel-pedido');
-  const sorted = [...ordersCache].sort((a,b)=>{
-    const ea = computeEstado(a), eb = computeEstado(b);
-    if(ea === eb) return b.fechaRegistro.localeCompare(a.fechaRegistro);
-    const order = { PENDIENTE:0, PARCIAL:1, COMPLETO:2 };
-    return order[ea]-order[eb];
-  });
-  sel.innerHTML = '<option value="">Selecciona un pedido...</option>' + sorted.map(o=>{
-    const estado = computeEstado(o);
-    const label = estado === 'COMPLETO' ? 'Completo' : estado === 'PARCIAL' ? 'Parcial' : 'Pendiente';
-    return `<option value="${o.id}">#${o.id} — ${label} — ${o.fechaRegistro}</option>`;
-  }).join('');
-  document.getElementById('despacho-body').innerHTML = '';
-}
-
-document.getElementById('sel-pedido').addEventListener('change', (e)=>{
-  renderDespachoBody(e.target.value);
-});
-
-function renderDespachoBody(pedidoId){
-  const body = document.getElementById('despacho-body');
-  if(!pedidoId){ body.innerHTML = ''; return; }
-  const order = ordersCache.find(o=>o.id === pedidoId);
-  if(!order){ body.innerHTML = ''; return; }
-
-  const estado = computeEstado(order);
-  const tipo = order.esMaleta ? `Maleta × ${order.maletaCantidad}` : 'Pedido sencillo';
-
-  let rowsHtml = order.catalogos.map((c,idx)=>`
-    <div class="despacho-check-row">
-      <input type="checkbox" class="desp-cat-check" data-idx="${idx}" ${c.enviado ? 'checked':''}>
-      <span>${c.nombre}</span>
-      <span class="qty">Cant. ${c.cantidad}</span>
-      <span class="status-tag ${c.enviado ? 'si':'no'}">${c.enviado ? 'Enviado' : 'Pendiente'}</span>
-    </div>
-  `).join('');
-
-  let pastaRow = '';
-  if(order.pastaDura){
-    pastaRow = `
-      <div class="despacho-check-row" style="border-top:2px dashed var(--line); margin-top:6px;">
-        <input type="checkbox" id="desp-pasta-check" ${order.pastaDura.enviado ? 'checked':''}>
-        <span>Pasta dura (aparte de catálogos)</span>
-        <span class="qty">Cant. ${order.pastaDura.cantidad}</span>
-        <span class="status-tag ${order.pastaDura.enviado ? 'si':'no'}">${order.pastaDura.enviado ? 'Enviada' : 'Pendiente'}</span>
-      </div>
-    `;
-  }
-
-  body.innerHTML = `
-    <div class="despacho-order-info">
-      <b>#${order.id}</b> — ${tipo} — ${badgeHtml(estado)}
-    </div>
-    <div class="catalog-list">
-      ${rowsHtml}
-      ${pastaRow}
-    </div>
-    <div style="margin-top:20px;">
-      <button class="primary" id="btn-guardar-despacho">Guardar despacho</button>
-    </div>
-  `;
-
-  document.getElementById('btn-guardar-despacho').addEventListener('click', async ()=>{
-    await loadInventory();
-    const checks = body.querySelectorAll('.desp-cat-check');
-    let inventoryChanged = false;
-    const insuficientes = [];
-
-    checks.forEach(chk=>{
-      const idx = chk.dataset.idx;
-      const cat = order.catalogos[idx];
-      const wasEnviado = cat.enviado;
-      const nowEnviado = chk.checked;
-      if(wasEnviado !== nowEnviado){
-        const item = inventoryCache.items[cat.nombre] || { terminado:0, proceso:0 };
-        if(nowEnviado){
-          if(item.terminado - cat.cantidad < 0) insuficientes.push(cat.nombre);
-          item.terminado = Math.max(0, item.terminado - cat.cantidad);
-        } else {
-          item.terminado = item.terminado + cat.cantidad;
-        }
-        inventoryCache.items[cat.nombre] = item;
-        inventoryChanged = true;
-      }
-      cat.enviado = nowEnviado;
-    });
-
-    const pastaChk = document.getElementById('desp-pasta-check');
-    if(pastaChk && order.pastaDura){
-      order.pastaDura.enviado = pastaChk.checked;
-    }
-    order.fechaUltimoDespacho = todayStr();
-
-    const updated = ordersCache.map(o => o.id === order.id ? order : o);
-    const ok = await saveOrders(updated);
-    if(inventoryChanged) await saveInventory(inventoryCache);
-
-    if(ok){
-      let msg = `Despacho de pedido #${order.id} actualizado.`;
-      if(insuficientes.length){
-        msg += ` Ojo: no había suficiente inventario terminado para ${insuficientes.join(', ')}, quedó en 0 — revisa el conteo.`;
-      }
-      showMsg('msg-despacho', msg, insuficientes.length ? 'err' : 'ok');
-      await renderDespachoSelect();
-      document.getElementById('sel-pedido').value = order.id;
-      renderDespachoBody(order.id);
-    } else {
-      showMsg('msg-despacho', 'No se pudo guardar el despacho. Intenta de nuevo.', 'err');
-    }
-  });
-}
 
 /* ---------------- TAB 4: INVENTARIO Y PRODUCCIÓN ---------------- */
 let inventoryCache = { stockObjetivo: 15, items: {} };

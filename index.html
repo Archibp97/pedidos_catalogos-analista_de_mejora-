@@ -353,6 +353,23 @@
     background:var(--green-soft); padding:3px 10px; border-radius:20px;
     cursor:pointer;
   }
+
+  #inv-details summary{
+    cursor:pointer;
+    font-family:'Fraunces', serif;
+    font-weight:600;
+    font-size:16px;
+    color:var(--ink);
+    list-style:none;
+    padding:2px 0;
+  }
+  #inv-details summary::-webkit-details-marker{ display:none; }
+  #inv-details summary::before{
+    content:'▸ ';
+    color:var(--brand);
+    font-size:13px;
+  }
+  #inv-details[open] summary::before{ content:'▾ '; }
 </style>
 </head>
 <body>
@@ -436,6 +453,10 @@
     <div class="summary" id="summary-stats"></div>
     <div class="card">
       <div id="msg-consultar" class="msg"></div>
+      <div class="field">
+        <label for="f-busqueda">Buscar por número de pedido o catálogo</label>
+        <input type="text" id="f-busqueda" placeholder="Ej. 598494 o Sheer">
+      </div>
       <div class="filters">
         <div class="field" style="margin-bottom:0;">
           <label for="f-desde">Fecha desde</label>
@@ -463,24 +484,29 @@
   <section class="panel" id="panel-inventario">
     <div class="card">
       <div id="msg-inventario" class="msg"></div>
-      <div class="field" style="max-width:260px;">
-        <label for="in-stock-objetivo">Stock objetivo (colchón mínimo por catálogo)</label>
-        <input type="number" id="in-stock-objetivo" min="0" value="15">
-      </div>
-      <div class="inv-table-wrap">
-        <table class="inv-table">
-          <thead>
-            <tr>
-              <th>Catálogo</th>
-              <th>Inventario terminado</th>
-              <th>Inventario en proceso</th>
-            </tr>
-          </thead>
-          <tbody id="inv-input-body"></tbody>
-        </table>
-      </div>
-      <button class="primary" id="btn-guardar-inventario" style="margin-top:18px;">Guardar inventario</button>
-      <div class="order-detail" style="margin-top:10px;">Esto es tu conteo inicial. Después de guardarlo, los despachos y la producción registrada lo mantienen actualizado solo.</div>
+      <details id="inv-details">
+        <summary>Conteo de inventario (terminado y en proceso)</summary>
+        <div style="margin-top:18px;">
+          <div class="field" style="max-width:260px;">
+            <label for="in-stock-objetivo">Stock objetivo (colchón mínimo por catálogo)</label>
+            <input type="number" id="in-stock-objetivo" min="0" value="15">
+          </div>
+          <div class="inv-table-wrap">
+            <table class="inv-table">
+              <thead>
+                <tr>
+                  <th>Catálogo</th>
+                  <th>Inventario terminado</th>
+                  <th>Inventario en proceso</th>
+                </tr>
+              </thead>
+              <tbody id="inv-input-body"></tbody>
+            </table>
+          </div>
+          <button class="primary" id="btn-guardar-inventario" style="margin-top:18px;">Guardar inventario</button>
+          <div class="order-detail" style="margin-top:10px;">Esto es tu conteo inicial. Después de guardarlo, los despachos y la producción registrada lo mantienen actualizado solo.</div>
+        </div>
+      </details>
     </div>
 
     <div class="card">
@@ -809,6 +835,7 @@ async function renderOrdersList(){
   const desde = document.getElementById('f-desde').value;
   const hasta = document.getElementById('f-hasta').value;
   const estadoFiltro = document.getElementById('f-estado').value;
+  const busqueda = document.getElementById('f-busqueda').value.trim().toLowerCase();
 
   let filtered = ordersCache.filter(o=>{
     if(desde && o.fechaRegistro < desde) return false;
@@ -816,6 +843,12 @@ async function renderOrdersList(){
     const estado = computeEstado(o);
     if(estadoFiltro === 'pendientes' && estado === 'COMPLETO') return false;
     if(estadoFiltro === 'completo' && estado !== 'COMPLETO') return false;
+    if(busqueda){
+      const pedidoMatch = o.id.toLowerCase().includes(busqueda);
+      const catalogoMatch = (o.catalogos||[]).some(c => c.nombre.toLowerCase().includes(busqueda));
+      const pastaMatch = o.pastaDura && 'pasta dura'.includes(busqueda);
+      if(!pedidoMatch && !catalogoMatch && !pastaMatch) return false;
+    }
     return true;
   });
 
@@ -942,10 +975,12 @@ function renderSummary(){
 ['f-desde','f-hasta','f-estado'].forEach(id=>{
   document.getElementById(id).addEventListener('change', renderOrdersList);
 });
+document.getElementById('f-busqueda').addEventListener('input', renderOrdersList);
 document.getElementById('btn-limpiar-filtros').addEventListener('click', ()=>{
   document.getElementById('f-desde').value = '';
   document.getElementById('f-hasta').value = '';
   document.getElementById('f-estado').value = 'todos';
+  document.getElementById('f-busqueda').value = '';
   renderOrdersList();
 });
 
